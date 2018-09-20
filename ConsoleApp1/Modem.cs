@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -87,23 +88,42 @@ namespace M5ModemInstaller
 
            
                 Guid classguid = new Guid("4d36e96d-e325-11ce-bfc1-08002be10318");
+                string infFile = Environment.CurrentDirectory + "\\Plugins\\M5-MDM-LS.inf";//primeworks copies the inf file into its output directory which is plugins
+                //Console.WriteLine("inf file is here: " + infFile);
+                //writer.WriteLine("inf file is here: " + infFile);
 
-                //little test
-                string infFile = "C:\\WINDOWS\\inf\\M5-MDM-LS.inf";
-                string HardwareID = "M5PNPLS";
+#if DEBUG
+            //hi debugger, can you copy and paste your inf file into here please? You'll find it in Primeworks//primeprobe2 :)
+            //infFile = "C:\\WINDOWS\\M5-MDM-LS.inf";
+            infFile = "C:\\Program Files(x86)\\Primayer\\PrimeWorks\\Plugins\\M5-MDM-LS.inf";
+#endif
+            string HardwareID = "M5PNPLS";
                 int lasterror = 0;
+                //writer.WriteLine("Find exisitng device with hardware id = " + HardwareID.ToString());
                 if (FindExistingDevice(HardwareID, out lasterror))
                 {
-                //INSTALLFLAG_READONLY = 2
-                bool restart = false;
+                    //writer.WriteLine("Found device");
+                    //INSTALLFLAG_READONLY = 2
+                    bool restart = false;
+                   // writer.WriteLine("Update driver for plug and play device");
                     if (!Win32Wrapper.UpdateDriverForPlugAndPlayDevices(IntPtr.Zero, HardwareID, infFile, 2, out restart))
-                        return false;
+                    {
+                    //    writer.WriteLine("Failed to update plug and play device");
+                    //int err = Marshal.GetLastWin32Error();
+                    //writer.WriteLine("Get last error returned; " + err.ToString());
+                    return false;
+                    }
                 }
                 else
                 {
+
                     //ERROR_NO_MORE_ITEMS = 259
                     if (lasterror != (int)Win32Wrapper.WinErrors.ERROR_NO_MORE_ITEMS)
+                    {
+                        //writer.WriteLine("Error No more items, returned from find device");
                         return false;
+                    }
+                //writer.WriteLine("Not found , but ok to continue and install");
                 }
 
                 bool res = Win32Wrapper.SetupDiGetINFClass(infFile, ref classguid, "Modem", 256, IntPtr.Zero);
@@ -111,18 +131,21 @@ namespace M5ModemInstaller
                 IntPtr DeviceInfoSet = Win32Wrapper.SetupDiCreateDeviceInfoList(ref classguid, IntPtr.Zero);
                 if (DeviceInfoSet.ToInt64() == INVALID_HANDLE_VALUE)
                 {
+                    //writer.WriteLine("SetupDiCreateDeviceInfoList falied");
                     return false;
                 }
 
                 if (!Win32Wrapper.SetupDiCreateDeviceInfo(DeviceInfoSet, "Modem", ref classguid, "@mdmhayes.inf,%m2700%;Modem M5", IntPtr.Zero, 0x1, ref DeviceInfoData))
                 {
                     int err = Marshal.GetLastWin32Error();
+                    //writer.WriteLine("SetupDiDestroyDeviceInfoList falied");
                     Win32Wrapper.SetupDiDestroyDeviceInfoList(DeviceInfoSet);
                     return false;
                 }
                 if (!Win32Wrapper.SetupDiSetDeviceRegistryProperty(DeviceInfoSet, ref DeviceInfoData, (uint)Win32Wrapper.SPDRP.SPDRP_HARDWAREID, HardwareID,
                     (HardwareID.Length + 2) * Marshal.SystemDefaultCharSize))
                 {
+                   // writer.WriteLine("SetupDiSetDeviceRegistryProperty falied");
                     Win32Wrapper.SetupDiDestroyDeviceInfoList(DeviceInfoSet);
                     return false;
                 }
@@ -130,6 +153,7 @@ namespace M5ModemInstaller
                 drvData.cbSize = (uint)Marshal.SizeOf(drvData);
                 uint DIF_REMOVE = 0x00000005;
                 bool result = true;
+               // writer.WriteLine("register modem...");
                 if (!RegisterModem(DeviceInfoSet, ref DeviceInfoData, COMPort, ref drvData))
                 {
                     result = false;
@@ -140,7 +164,9 @@ namespace M5ModemInstaller
                 bool restart = false;
                 if (!Win32Wrapper.UpdateDriverForPlugAndPlayDevices(IntPtr.Zero, HardwareID, infFile, 1, out restart))                  
                 {
-                    int err = Marshal.GetLastWin32Error();
+                    //writer.WriteLine("failed to update driver for plug and play");
+                    //int err = Marshal.GetLastWin32Error();
+                    //writer.WriteLine("Get last error returned; " + err.ToString());
                     result = false;
                 }
                 if (!result)
@@ -152,6 +178,7 @@ namespace M5ModemInstaller
                 }
                 catch
                 {
+                    //writer.WriteLine("Exception");
                     Win32Wrapper.SetupDiDestroyDeviceInfoList(DeviceInfoSet);
                     return false;
                 }
@@ -261,6 +288,7 @@ namespace M5ModemInstaller
                     string AttachedTo = regkey.OpenSubKey(keyModem + "\\" + key).GetValue("AttachedTo").ToString();
                     if (COMPort.Trim().ToUpper() != AttachedTo.Trim().ToUpper())
                     {
+                        
                         UninstallModem(AttachedTo);
                     }
                        
@@ -300,7 +328,7 @@ namespace M5ModemInstaller
                     string AttachedTo = regkey.OpenSubKey(keyModem + "\\" + key).GetValue("AttachedTo").ToString();
                     if (COMPort.Trim().ToUpper() == AttachedTo.Trim().ToUpper())
                     {
-                        string friendlyName= regkey.OpenSubKey(keyModem + "\\" + key).GetValue("FriendlyName").ToString();//just a test
+                       // string friendlyName= regkey.OpenSubKey(keyModem + "\\" + key).GetValue("FriendlyName").ToString();//just a test
                         return true;
                     }
                 }
